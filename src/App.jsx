@@ -258,9 +258,20 @@ export default function App() {
       await photoDB.set(selected.id, data);
       setUserPhoto(data);
       if (cloudEnabled && session) {
-        uploadPhoto(selected.id, data).catch(() => {
-          setSaveNote("Photo saved locally; cloud upload failed");
-          setTimeout(() => setSaveNote(""), 2500);
+        uploadPhoto(selected.id, data).then(() => {
+          setSaveNote("Photo saved");
+          setTimeout(() => setSaveNote(""), 1500);
+        }).catch(async (e) => {
+          const msg = (e && e.message) || "upload failed";
+          // If it's an auth problem, refresh the session so the next try works.
+          if (/sign|jwt|auth|row-level|denied|403|401/i.test(msg)) {
+            const s = await getSession();
+            setSession(s);
+            setSaveNote("Photo saved on this device — tap the photo button again to back it up");
+          } else {
+            setSaveNote("Photo saved on this device (cloud: " + msg + ")");
+          }
+          setTimeout(() => setSaveNote(""), 4000);
         });
       }
     } catch (err) {

@@ -5,7 +5,30 @@ import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "../config.js";
 
 export const cloudEnabled = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-export const supabase = cloudEnabled ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+export const supabase = cloudEnabled
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: "pkce",
+      },
+    })
+  : null;
+
+// Always returns a valid, fresh session or null — refreshing if needed.
+// Use this right before any authenticated call (e.g. uploads) so we never
+// fire a request while the token is missing or stale.
+export async function requireSession() {
+  if (!supabase) return null;
+  let { data } = await supabase.auth.getSession();
+  if (!data.session) {
+    // Try a refresh in case the stored token just needs reviving.
+    const r = await supabase.auth.refreshSession();
+    data = r.data;
+  }
+  return data.session || null;
+}
 
 export async function getSession() {
   if (!supabase) return null;
@@ -97,8 +120,8 @@ export function publicPhotoUrl(ownerId, placeId) {
 }
 
 export async function uploadPhoto(placeId, dataUrl) {
-  const session = await getSession();
-  if (!session) return null;
+  const session = await requireSession();
+  if (!session) throw new Error("Not signed in — please sign in again to save photos to the cloud.");
   const blob = await (await fetch(dataUrl)).blob();
   const { error } = await supabase.storage
     .from("photos")
