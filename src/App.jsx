@@ -8,7 +8,7 @@ import {
 import { loadLocal, saveLocal, photoDB, fileToDataUrl } from "./lib/local.js";
 import { RoundelMark } from "./components/RoundelMark.jsx";
 import {
-  cloudEnabled, getSession, onAuthChange, signInWithEmail, signOut,
+  cloudEnabled, getSession, onAuthChange, signInWithEmail, signInWithGoogle, signOut,
   ensureProfile, updateProfile, fetchLeaderboard, fetchMyScore,
   pullAll, pushPlaces, fetchShared, publicPhotoUrl,
   uploadPhoto, removeCloudPhoto,
@@ -947,12 +947,22 @@ export default function App() {
               </p>
             ) : (
               <>
-                <p style={{ fontSize: 13.5, color: "#55555B", margin: "0 0 12px" }}>
-                  Enter your email and we'll send a sign-in link. Your progress, tags and photos will then follow you across devices — and you'll get a shareable link to your map.
+                <p style={{ fontSize: 13.5, color: "#55555B", margin: "0 0 14px" }}>
+                  Sign in so your progress, tags and photos follow you across devices — and you'll get a shareable link to your map.
                 </p>
+                <button className="chip" onClick={() => signInWithGoogle().catch(() => alert("Couldn't start Google sign-in."))}
+                  style={{ width: "100%", padding: "10px", borderRadius: 9, fontSize: 14, fontWeight: 700, border: "1.5px solid #D6D6D1", background: "#FFF", color: "#16161A", display: "flex", alignItems: "center", justifyContent: "center", gap: 9 }}>
+                  <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+                  Continue with Google
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0" }}>
+                  <div style={{ flex: 1, height: 1, background: "#ECECE8" }} />
+                  <span style={{ fontSize: 12, color: "#9A978B" }}>or by email</span>
+                  <div style={{ flex: 1, height: 1, background: "#ECECE8" }} />
+                </div>
                 <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") sendMagicLink(); }}
-                  placeholder="you@example.com" autoFocus
+                  placeholder="you@example.com"
                   style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 9, fontSize: 14, border: "1.5px solid #D6D6D1", fontFamily: "inherit", outlineColor: "#16161A" }} />
                 <button className="chip" onClick={sendMagicLink}
                   style={{ marginTop: 10, width: "100%", padding: "9px", borderRadius: 9, fontSize: 14, fontWeight: 700, border: "none", background: "#16161A", color: "#FFF" }}>
