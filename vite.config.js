@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["pwa-192.png", "pwa-512.png", "config.js"],
       manifest: {
-        name: "London, on foot",
-        short_name: "London",
+        name: "Patch Map London",
+        short_name: "Patch Map",
         description: "Track every London neighbourhood and green space you've explored.",
         theme_color: "#16161A",
         background_color: "#FFFFFF",

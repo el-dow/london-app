@@ -6,6 +6,7 @@ import {
   HOOD_CELLS, GREEN_SHAPES, THAMES_PATH, BASE_WATER, ROAD_PATHS, W, H, Postcard,
 } from "./data/core.jsx";
 import { loadLocal, saveLocal, photoDB, fileToDataUrl } from "./lib/local.js";
+import { RoundelMark } from "./components/RoundelMark.jsx";
 import {
   cloudEnabled, getSession, onAuthChange, signInWithEmail, signOut,
   ensureProfile, pullAll, pushPlaces, fetchShared, publicPhotoUrl,
@@ -430,10 +431,13 @@ export default function App() {
 
       {/* Header */}
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 16px 0" }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <h1 style={{ fontWeight: 800, fontSize: 27, letterSpacing: "-0.02em", margin: 0 }}>
-            London, on foot{readOnly && <span style={{ fontWeight: 600, fontSize: 15, color: "#6B6B70" }}> — someone's shared map</span>}
-          </h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <RoundelMark size={46} />
+            <h1 style={{ fontWeight: 800, fontSize: 25, letterSpacing: "-0.02em", margin: 0, lineHeight: 1.05 }}>
+              Patch Map<br />London{readOnly && <span style={{ fontWeight: 600, fontSize: 14, color: "#6B6B70" }}> · a shared map</span>}
+            </h1>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12.5, color: "#6B6B70" }}>
               {saveNote || (readOnly ? "read-only view" : session ? "synced to your account" : "progress saves in this browser")}
@@ -826,7 +830,10 @@ export default function App() {
       {showOnboard && !readOnly && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(22,22,26,0.45)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ background: "#FFF", borderRadius: 14, padding: "24px 24px 18px", width: "min(380px, 100%)", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
-            <h3 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 800 }}>London, on foot</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 11, margin: "0 0 12px" }}>
+              <RoundelMark size={46} />
+              <h3 style={{ margin: 0, fontSize: 21, fontWeight: 800, lineHeight: 1.05 }}>Patch Map<br />London</h3>
+            </div>
             <p style={{ fontSize: 14, color: "#3C3C42", margin: "0 0 10px", lineHeight: 1.55 }}>
               Your personal map of every London neighbourhood and green space. Tap an area on the map to open its card — mark it <strong>want to go</strong> or <strong>visited</strong>, tag your impressions, and add your own photo.
             </p>
