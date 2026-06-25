@@ -44,6 +44,9 @@ export default function App() {
   const [myScore, setMyScore] = useState(null);
   const [lbLoading, setLbLoading] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [nudgeDismissed, setNudgeDismissed] = useState(() => {
+    try { return localStorage.getItem("lof-nudge-x") === "1"; } catch (e) { return false; }
+  });
   const [authOpen, setAuthOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authSent, setAuthSent] = useState(false);
@@ -518,6 +521,23 @@ export default function App() {
           </div>
         </div>
 
+        {cloudEnabled && !readOnly && !session && !nudgeDismissed && (visited + wanted) >= 3 && (
+          <div style={{ margin: "10px 0 0", padding: "11px 14px", borderRadius: 10, background: "#16161A", color: "#FFF", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13.5, flex: 1, minWidth: 180 }}>
+              You're building a great map — sign in to save it across devices, add photos and join the leaderboard.
+            </span>
+            <button className="chip" onClick={() => { setAuthOpen(true); setAuthSent(false); }}
+              style={{ padding: "7px 14px", borderRadius: 999, fontSize: 13, fontWeight: 700, border: "none", background: "#FFF", color: "#16161A" }}>
+              Sign in
+            </button>
+            <button onClick={() => { setNudgeDismissed(true); try { localStorage.setItem("lof-nudge-x", "1"); } catch (e) {} }}
+              aria-label="Dismiss" className="chip"
+              style={{ padding: "7px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: "1px solid rgba(255,255,255,0.3)", background: "transparent", color: "#FFF" }}>
+              Not now
+            </button>
+          </div>
+        )}
+
         {readOnly && (
           <div style={{ margin: "10px 0 0", padding: "9px 13px", borderRadius: 10, background: "#F4F1E8", border: "1px solid #E3DFD2", fontSize: 13.5, color: "#55555B" }}>
             {shareError
@@ -892,10 +912,10 @@ export default function App() {
                   <span onClick={toggleLeaderboard} style={{ position: "relative", width: 40, height: 23, borderRadius: 999, background: profile && profile.on_leaderboard ? "#1B8A4C" : "#D6D6D1", transition: "background 150ms", flexShrink: 0 }}>
                     <span style={{ position: "absolute", top: 2.5, left: profile && profile.on_leaderboard ? 19.5 : 2.5, width: 18, height: 18, borderRadius: "50%", background: "#FFF", transition: "left 150ms" }} />
                   </span>
-                  <span>Show me on the public leaderboard{profile && !profile.on_leaderboard ? " (you're hidden right now)" : ""}</span>
+                  <span>Show my name on the leaderboard{profile && profile.on_leaderboard === false ? " — you currently appear as \u201cAnonymous explorer\u201d" : ""}</span>
                 </label>
                 <div style={{ fontSize: 12, color: "#8A8A90", marginTop: 7 }}>
-                  Only your display name and score are ever shown — never your email or which places you've been.
+                  Everyone's on the leaderboard. With this off, others see you as "Anonymous explorer" — your email and which places you've been are never shown either way.
                 </div>
               </div>
 
@@ -917,7 +937,7 @@ export default function App() {
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: mine ? "#F1F5EE" : "#FFF", border: "1.5px solid " + (mine ? "#1B8A4C" : "#ECECE8") }}>
                         <div style={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 15, color: medal || "#9A978B" }}>{r.rank}</div>
                         <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.display_name}</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{r.visited} visited · {r.photos} photos</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{r.hoods} hoods · {r.greens} parks · {r.photos} photos</div>
                         <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", minWidth: 48, textAlign: "right" }}>{r.score}</div>
                       </div>
                     );
