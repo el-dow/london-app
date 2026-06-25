@@ -10,6 +10,9 @@ body { margin: 0; }
 .chip { transition: transform 80ms ease; cursor: pointer; user-select: none; font-family: inherit; }
 .chip:active { transform: scale(0.96); }
 .chip:focus-visible, button:focus-visible { outline: 2px solid #16161A; outline-offset: 2px; }
+.cell:focus, .cell:focus-visible { outline: none; }
+.leaflet-interactive:focus, .leaflet-interactive:focus-visible { outline: none; }
+path:focus { outline: none; }
 .cell { cursor: pointer; }
 .cell:hover { filter: brightness(0.92); }
 .maplabel { pointer-events: none; font-family: 'Hanken Grotesk', sans-serif; }

@@ -9,7 +9,8 @@ import { loadLocal, saveLocal, photoDB, fileToDataUrl } from "./lib/local.js";
 import { RoundelMark } from "./components/RoundelMark.jsx";
 import {
   cloudEnabled, getSession, onAuthChange, signInWithEmail, signOut,
-  ensureProfile, pullAll, pushPlaces, fetchShared, publicPhotoUrl,
+  ensureProfile, updateProfile, fetchLeaderboard, fetchMyScore,
+  pullAll, pushPlaces, fetchShared, publicPhotoUrl,
   uploadPhoto, removeCloudPhoto,
 } from "./lib/cloud.js";
 
@@ -38,6 +39,11 @@ export default function App() {
   const [mapStyle, setMapStyle] = useState("street");
   const [session, setSession] = useState(null);
   const [shareLink, setShareLink] = useState("");
+  const [profile, setProfile] = useState(null);
+  const [leaderboard, setLeaderboard] = useState(null);
+  const [myScore, setMyScore] = useState(null);
+  const [lbLoading, setLbLoading] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authSent, setAuthSent] = useState(false);
@@ -89,8 +95,12 @@ export default function App() {
 
   useEffect(() => {
     if (!session || readOnly) { setShareLink(""); return; }
-    ensureProfile().then((sid) => {
-      if (sid) setShareLink(`${window.location.origin}${window.location.pathname}?share=${sid}`);
+    ensureProfile().then((prof) => {
+      if (prof) {
+        setProfile(prof);
+        setNameDraft(prof.display_name || "");
+        if (prof.share_id) setShareLink(`${window.location.origin}${window.location.pathname}?share=${prof.share_id}`);
+      }
     }).catch(() => {});
     // Merge: newer side wins per place
     (async () => {
@@ -400,6 +410,50 @@ export default function App() {
     setTimeout(() => setSaveNote(""), 2000);
   };
 
+  const loadRankings = async () => {
+    if (!cloudEnabled) return;
+    setLbLoading(true);
+    try {
+      const [lb, sc] = await Promise.all([
+        fetchLeaderboard(),
+        session ? fetchMyScore() : Promise.resolve(null),
+      ]);
+      setLeaderboard(lb);
+      setMyScore(sc);
+    } catch (e) {
+      setLeaderboard([]);
+    }
+    setLbLoading(false);
+  };
+
+  useEffect(() => {
+    if (view === "rank") loadRankings();
+  }, [view, session && session.user.id]);
+
+  const saveName = async () => {
+    const name = nameDraft.trim().slice(0, 24);
+    try {
+      await updateProfile({ display_name: name });
+      setProfile((p) => ({ ...(p || {}), display_name: name }));
+      setSaveNote("Name saved");
+      setTimeout(() => setSaveNote(""), 1500);
+      loadRankings();
+    } catch (e) {
+      alert("Couldn't save your name — try again.");
+    }
+  };
+
+  const toggleLeaderboard = async () => {
+    const next = !(profile && profile.on_leaderboard);
+    try {
+      await updateProfile({ on_leaderboard: next });
+      setProfile((p) => ({ ...(p || {}), on_leaderboard: next }));
+      loadRankings();
+    } catch (e) {
+      alert("Couldn't update that — try again.");
+    }
+  };
+
   const sendMagicLink = async () => {
     const email = authEmail.trim();
     if (!email) return;
@@ -506,7 +560,7 @@ export default function App() {
             </div>
           )}
           <div style={{ display: "flex", border: "1.5px solid #16161A", borderRadius: 999, overflow: "hidden" }}>
-            {[["map", "Map"], ["list", "List"]].map(([key, label]) => (
+            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["rank", "Rankings"]] : [])].map(([key, label]) => (
               <button key={key} className="chip" onClick={() => setView(key)}
                 style={{ padding: "7px 16px", fontSize: 14, fontWeight: 600, border: "none", background: view === key ? "#16161A" : "#FFF", color: view === key ? "#FFF" : "#16161A", borderRadius: 0 }}>
                 {label}
@@ -791,6 +845,94 @@ export default function App() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ——— RANKINGS VIEW ——— */}
+      {view === "rank" && (
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 16px 60px" }}>
+          {!session ? (
+            <div style={{ textAlign: "center", padding: "40px 16px", color: "#55555B" }}>
+              <p style={{ fontSize: 15, marginBottom: 14 }}>Sign in to earn points and join the leaderboard.</p>
+              <button className="chip" onClick={() => { setAuthOpen(true); setAuthSent(false); }}
+                style={{ padding: "9px 18px", borderRadius: 999, fontSize: 14, fontWeight: 700, border: "none", background: "#16161A", color: "#FFF" }}>
+                Sign in to sync
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* My score */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, margin: "6px 0 8px" }}>
+                {[
+                  ["Your score", myScore ? myScore.total : "—", "#16161A"],
+                  ["Visited · 10 each", myScore ? myScore.visited_pts : "—", "#1B8A4C"],
+                  ["Tagged · 5 each", myScore ? myScore.tag_pts : "—", "#E08712"],
+                  ["Photos · 5 each", myScore ? myScore.photo_pts : "—", "#A23073"],
+                ].map(([label, val, col]) => (
+                  <div key={label} style={{ background: "#F6F4EC", borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 12, color: "#6B6B70", fontFamily: "'DM Mono', monospace" }}>{label}</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: col, letterSpacing: "-0.02em" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Display name + opt-in */}
+              <div style={{ background: "#FFF", border: "1.5px solid #E3DFD2", borderRadius: 12, padding: "14px 16px", margin: "8px 0 20px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 9 }}>How you appear on the leaderboard</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={24}
+                    placeholder="Your display name"
+                    style={{ flex: "1 1 160px", padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1.5px solid #D6D6D1", fontFamily: "inherit", outlineColor: "#16161A" }} />
+                  <button className="chip" onClick={saveName}
+                    style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: "1.5px solid #16161A", background: "#FFF", color: "#16161A" }}>
+                    Save name
+                  </button>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, cursor: "pointer", fontSize: 13.5 }}>
+                  <span onClick={toggleLeaderboard} style={{ position: "relative", width: 40, height: 23, borderRadius: 999, background: profile && profile.on_leaderboard ? "#1B8A4C" : "#D6D6D1", transition: "background 150ms", flexShrink: 0 }}>
+                    <span style={{ position: "absolute", top: 2.5, left: profile && profile.on_leaderboard ? 19.5 : 2.5, width: 18, height: 18, borderRadius: "50%", background: "#FFF", transition: "left 150ms" }} />
+                  </span>
+                  <span>Show me on the public leaderboard{profile && !profile.on_leaderboard ? " (you're hidden right now)" : ""}</span>
+                </label>
+                <div style={{ fontSize: 12, color: "#8A8A90", marginTop: 7 }}>
+                  Only your display name and score are ever shown — never your email or which places you've been.
+                </div>
+              </div>
+
+              {/* Leaderboard */}
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Leaderboard</h2>
+                <button className="chip" onClick={loadRankings} style={{ padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 600, border: "1.5px solid #D6D6D1", background: "#FFF", color: "#3C3C42" }}>
+                  Refresh
+                </button>
+              </div>
+              {lbLoading ? (
+                <p style={{ color: "#6B6B70", fontFamily: "'DM Mono', monospace", fontSize: 14 }}>Loading…</p>
+              ) : leaderboard && leaderboard.length ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {leaderboard.map((r, i) => {
+                    const medal = r.rank === 1 ? "#E0A012" : r.rank === 2 ? "#9AA0A6" : r.rank === 3 ? "#B5763A" : null;
+                    const mine = profile && (r.display_name === (profile.display_name || "")) && profile.on_leaderboard;
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: mine ? "#F1F5EE" : "#FFF", border: "1.5px solid " + (mine ? "#1B8A4C" : "#ECECE8") }}>
+                        <div style={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 15, color: medal || "#9A978B" }}>{r.rank}</div>
+                        <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.display_name}</div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{r.visited} visited · {r.photos} photos</div>
+                        <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", minWidth: 48, textAlign: "right" }}>{r.score}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ color: "#6B6B70", fontSize: 14 }}>
+                  No one's on the leaderboard yet. Flip the toggle above to be the first!
+                </p>
+              )}
+              <p style={{ fontSize: 12.5, color: "#8A8A90", marginTop: 16 }}>
+                Scoring: 10 points per place visited, 5 for tagging a place (once each), 5 for adding a photo.
+              </p>
+            </>
+          )}
         </div>
       )}
 

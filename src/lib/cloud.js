@@ -32,10 +32,34 @@ export async function ensureProfile() {
   const session = await getSession();
   if (!session) return null;
   const uid = session.user.id;
-  const { data } = await supabase.from("profiles").select("share_id").eq("user_id", uid).maybeSingle();
-  if (data && data.share_id) return data.share_id;
-  const ins = await supabase.from("profiles").insert({ user_id: uid }).select("share_id").single();
-  return ins.data ? ins.data.share_id : null;
+  const { data } = await supabase.from("profiles")
+    .select("share_id, display_name, on_leaderboard").eq("user_id", uid).maybeSingle();
+  if (data && data.share_id) return data;
+  const ins = await supabase.from("profiles").insert({ user_id: uid })
+    .select("share_id, display_name, on_leaderboard").single();
+  return ins.data || null;
+}
+
+export async function updateProfile({ display_name, on_leaderboard }) {
+  const session = await getSession();
+  if (!session) return;
+  const patch = {};
+  if (display_name !== undefined) patch.display_name = display_name;
+  if (on_leaderboard !== undefined) patch.on_leaderboard = on_leaderboard;
+  const { error } = await supabase.from("profiles").update(patch).eq("user_id", session.user.id);
+  if (error) throw error;
+}
+
+export async function fetchLeaderboard() {
+  const { data, error } = await supabase.rpc("get_leaderboard");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchMyScore() {
+  const { data, error } = await supabase.rpc("my_score");
+  if (error) throw error;
+  return (data && data[0]) || { visited_pts: 0, tag_pts: 0, photo_pts: 0, total: 0 };
 }
 
 export async function pullAll() {
@@ -73,6 +97,7 @@ export async function uploadPhoto(placeId, dataUrl) {
     .from("photos")
     .upload(photoKey(session.user.id, placeId), blob, { upsert: true, contentType: "image/jpeg" });
   if (error) throw error;
+  await supabase.from("photos_meta").upsert({ user_id: session.user.id, place_id: placeId }).then(() => {}, () => {});
   return publicPhotoUrl(session.user.id, placeId);
 }
 
@@ -80,4 +105,5 @@ export async function removeCloudPhoto(placeId) {
   const session = await getSession();
   if (!session) return;
   await supabase.storage.from("photos").remove([photoKey(session.user.id, placeId)]);
+  await supabase.from("photos_meta").delete().eq("user_id", session.user.id).eq("place_id", placeId).then(() => {}, () => {});
 }
