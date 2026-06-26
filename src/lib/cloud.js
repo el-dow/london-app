@@ -94,8 +94,8 @@ export async function fetchMyScore() {
 
 export async function fetchStats() {
   const [visited, wanted, tags, totals] = await Promise.all([
-    supabase.rpc("top_visited", { p_limit: 15 }),
-    supabase.rpc("top_wanted", { p_limit: 10 }),
+    supabase.rpc("top_visited", { p_limit: 60 }),
+    supabase.rpc("top_wanted", { p_limit: 60 }),
     supabase.rpc("top_tags", { p_limit: 15 }),
     supabase.rpc("community_totals"),
   ]);

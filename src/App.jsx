@@ -927,10 +927,13 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 22 }}>
                 {/* Most visited */}
                 <div>
-                  <h2 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 800 }}>Most-visited places</h2>
-                  {stats.topVisited.length ? (() => {
-                    const max = stats.topVisited[0].visitors || 1;
-                    return stats.topVisited.map((r, i) => (
+                  <h2 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 800 }}>Most-visited {tab === "green" ? "green spaces" : "neighbourhoods"}</h2>
+                  {(() => {
+                    const pre = tab === "green" ? "g:" : "n:";
+                    const rows = stats.topVisited.filter((r) => r.place_id.startsWith(pre)).slice(0, 15);
+                    if (!rows.length) return <p style={{ fontSize: 13.5, color: "#8A8A90" }}>No visits logged yet.</p>;
+                    const max = rows[0].visitors || 1;
+                    return rows.map((r, i) => (
                       <div key={r.place_id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
                         <span style={{ width: 18, textAlign: "right", fontSize: 12, color: "#9A978B", fontFamily: "'DM Mono', monospace" }}>{i + 1}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -944,15 +947,18 @@ export default function App() {
                         </div>
                       </div>
                     ));
-                  })() : <p style={{ fontSize: 13.5, color: "#8A8A90" }}>No visits logged yet.</p>}
+                  })()}
                 </div>
 
                 {/* Most wanted */}
                 <div>
-                  <h2 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 800 }}>Most wished-for</h2>
-                  {stats.topWanted.length ? (() => {
-                    const max = stats.topWanted[0].wants || 1;
-                    return stats.topWanted.map((r, i) => (
+                  <h2 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 800 }}>Most wished-for {tab === "green" ? "green spaces" : "neighbourhoods"}</h2>
+                  {(() => {
+                    const pre = tab === "green" ? "g:" : "n:";
+                    const rows = stats.topWanted.filter((r) => r.place_id.startsWith(pre)).slice(0, 15);
+                    if (!rows.length) return <p style={{ fontSize: 13.5, color: "#8A8A90" }}>Nothing on wishlists yet.</p>;
+                    const max = rows[0].wants || 1;
+                    return rows.map((r, i) => (
                       <div key={r.place_id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
                         <span style={{ width: 18, textAlign: "right", fontSize: 12, color: "#9A978B", fontFamily: "'DM Mono', monospace" }}>{i + 1}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -966,7 +972,7 @@ export default function App() {
                         </div>
                       </div>
                     ));
-                  })() : <p style={{ fontSize: 13.5, color: "#8A8A90" }}>Nothing on wishlists yet.</p>}
+                  })()}
                 </div>
               </div>
 
@@ -1074,7 +1080,7 @@ export default function App() {
                 </div>
               ) : (
                 <p style={{ color: "#6B6B70", fontSize: 14 }}>
-                  No one's on the leaderboard yet. Flip the toggle above to be the first!
+                  No one's on the leaderboard yet. Mark some places to be the first!
                 </p>
               )}
               <p style={{ fontSize: 12.5, color: "#8A8A90", marginTop: 16 }}>
