@@ -10,6 +10,7 @@ import { RoundelMark } from "./components/RoundelMark.jsx";
 import {
   cloudEnabled, getSession, onAuthChange, signInWithEmail, signInWithGoogle, signOut,
   ensureProfile, updateProfile, fetchLeaderboard, fetchMyScore, fetchStats,
+  setUsername, fetchUserMap, claimReferral, fetchMyReferrals,
   pullAll, pushPlaces, fetchShared, publicPhotoUrl,
   uploadPhoto, removeCloudPhoto,
 } from "./lib/cloud.js";
@@ -26,6 +27,14 @@ const ONBOARD_KEY = "lof-onboarded";
 export default function App() {
   const shareId = useMemo(() => new URLSearchParams(window.location.search).get("share"), []);
   const readOnly = Boolean(shareId);
+
+  // Capture a referral code from the URL (?ref=) and remember it until sign-in.
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) {
+      try { localStorage.setItem("lof-pending-ref", ref); } catch (e) {}
+    }
+  }, []);
 
   const [view, setView] = useState("map");
   const [tab, setTab] = useState("hoods");
@@ -52,7 +61,13 @@ export default function App() {
   const [lbLoading, setLbLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
+  const [usernameDraft, setUsernameDraft] = useState("");
+  const [usernameMsg, setUsernameMsg] = useState("");
+  const [friendQuery, setFriendQuery] = useState("");
+  const [compareData, setCompareData] = useState(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState("");
+  const [referralCount, setReferralCount] = useState(0);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("lof-nudge-x") === "1"; } catch (e) { return false; }
   });
@@ -110,10 +125,24 @@ export default function App() {
     ensureProfile().then((prof) => {
       if (prof) {
         setProfile(prof);
-        setNameDraft(prof.display_name || "");
+        setUsernameDraft(prof.username || "");
         if (prof.share_id) setShareLink(`${window.location.origin}${window.location.pathname}?share=${prof.share_id}`);
       }
     }).catch(() => {});
+    // Claim a pending referral, then load my referral count.
+    (async () => {
+      try {
+        const pending = localStorage.getItem("lof-pending-ref");
+        if (pending) {
+          const res = await claimReferral(pending);
+          if (res === "ok" || res === "already" || res === "self") {
+            localStorage.removeItem("lof-pending-ref");
+          }
+          if (res === "ok") { setSaveNote("Referral credited — thanks for joining!"); setTimeout(() => setSaveNote(""), 3000); }
+        }
+        setReferralCount(await fetchMyReferrals());
+      } catch (e) { /* ignore */ }
+    })();
     // Merge: newer side wins per place
     (async () => {
       try {
@@ -465,17 +494,51 @@ export default function App() {
     if (view === "stats") loadStats();
   }, [view]);
 
-  const saveName = async () => {
-    const name = nameDraft.trim().slice(0, 24);
+  const saveUsername = async () => {
+    const name = usernameDraft.trim().toLowerCase();
+    if (!name) return;
     try {
-      await updateProfile({ display_name: name });
-      setProfile((p) => ({ ...(p || {}), display_name: name }));
-      setSaveNote("Name saved");
-      setTimeout(() => setSaveNote(""), 1500);
-      loadRankings();
+      const res = await setUsername(name);
+      if (res === "ok") {
+        setProfile((p) => ({ ...(p || {}), username: name }));
+        setUsernameMsg("Username saved: @" + name);
+        loadRankings();
+      } else if (res === "taken") {
+        setUsernameMsg("Sorry, @" + name + " is taken — try another.");
+      } else {
+        setUsernameMsg("Use 3–20 letters, numbers or underscores.");
+      }
     } catch (e) {
-      alert("Couldn't save your name — try again.");
+      setUsernameMsg("Couldn't save that — try again.");
     }
+    setTimeout(() => setUsernameMsg(""), 4000);
+  };
+
+  const runCompare = async () => {
+    const q = friendQuery.trim().toLowerCase();
+    if (!q) return;
+    if (profile && profile.username && q === profile.username) {
+      setCompareError("That's you! Search a friend's username.");
+      return;
+    }
+    setCompareError("");
+    setCompareLoading(true);
+    setCompareData(null);
+    try {
+      const rows = await fetchUserMap(q);
+      if (!rows.length) {
+        setCompareError("No explorer found with username @" + q + " (or they haven't marked anywhere yet).");
+        setCompareLoading(false);
+        return;
+      }
+      const theirVisited = new Set(rows.filter((r) => r.state === 2).map((r) => r.place_id));
+      const theirWanted = new Set(rows.filter((r) => r.state === 1).map((r) => r.place_id));
+      const label = rows[0].display || ("@" + q);
+      setCompareData({ username: q, label, theirVisited, theirWanted });
+    } catch (e) {
+      setCompareError("Couldn't load that map — try again.");
+    }
+    setCompareLoading(false);
   };
 
   const toggleLeaderboard = async () => {
@@ -587,9 +650,9 @@ export default function App() {
             ))}
             <div className="marker" style={{ position: "absolute", top: 3, left: `calc(${pct}% - 9px)`, width: 18, height: 18, borderRadius: "50%", background: "#FFF", border: "4px solid #16161A", transition: "left 300ms ease" }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'DM Mono', monospace", fontSize: 12.5, color: "#55555B" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "'DM Mono', monospace", fontSize: 12.5, color: "#55555B" }}>
             <span>{visited}/{total} visited · {wanted} on the list</span>
-            <span style={{ fontWeight: 500, color: "#16161A" }}>{pct}%</span>
+            <span style={{ fontWeight: 700, fontSize: 16, color: "#16161A" }}>{pct}%</span>
           </div>
         </div>
 
@@ -612,7 +675,7 @@ export default function App() {
             </div>
           )}
           <div style={{ display: "flex", border: "1.5px solid #16161A", borderRadius: 999, overflow: "hidden" }}>
-            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["rank", "Rankings"], ["stats", "Stats"]] : [])].map(([key, label]) => (
+            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["rank", "Rankings"], ["stats", "Stats"], ["compare", "Compare"]] : [])].map(([key, label]) => (
               <button key={key} className="chip" onClick={() => setView(key)}
                 style={{ padding: "7px 16px", fontSize: 14, fontWeight: 600, border: "none", background: view === key ? "#16161A" : "#FFF", color: view === key ? "#FFF" : "#16161A", borderRadius: 0 }}>
                 {label}
@@ -1023,6 +1086,7 @@ export default function App() {
                   ["Visited · 10 each", myScore ? myScore.visited_pts : "—", "#1B8A4C"],
                   ["Tagged · 5 each", myScore ? myScore.tag_pts : "—", "#E08712"],
                   ["Photos · 5 each", myScore ? myScore.photo_pts : "—", "#A23073"],
+                  ["Referrals · 25 each", myScore ? myScore.referral_pts : "—", "#2747B8"],
                 ].map(([label, val, col]) => (
                   <div key={label} style={{ background: "#F6F4EC", borderRadius: 10, padding: "12px 14px" }}>
                     <div style={{ fontSize: 12, color: "#6B6B70", fontFamily: "'DM Mono', monospace" }}>{label}</div>
@@ -1031,27 +1095,53 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Display name + opt-in */}
+              {/* Username + visibility */}
               <div style={{ background: "#FFF", border: "1.5px solid #E3DFD2", borderRadius: 12, padding: "14px 16px", margin: "8px 0 20px" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 9 }}>How you appear on the leaderboard</div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 9 }}>Your username</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={24}
-                    placeholder="Your display name"
-                    style={{ flex: "1 1 160px", padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1.5px solid #D6D6D1", fontFamily: "inherit", outlineColor: "#16161A" }} />
-                  <button className="chip" onClick={saveName}
+                  <div style={{ display: "flex", alignItems: "center", flex: "1 1 160px", border: "1.5px solid #D6D6D1", borderRadius: 8, paddingLeft: 10 }}>
+                    <span style={{ color: "#9A978B", fontWeight: 700 }}>@</span>
+                    <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value.toLowerCase())} maxLength={20}
+                      placeholder="yourname"
+                      style={{ flex: 1, padding: "8px 8px", fontSize: 14, border: "none", fontFamily: "inherit", outline: "none" }} />
+                  </div>
+                  <button className="chip" onClick={saveUsername}
                     style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: "1.5px solid #16161A", background: "#FFF", color: "#16161A" }}>
-                    Save name
+                    {profile && profile.username ? "Update" : "Claim"}
                   </button>
                 </div>
+                {usernameMsg && <div style={{ fontSize: 12.5, color: "#3C3C42", marginTop: 8 }}>{usernameMsg}</div>}
                 <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, cursor: "pointer", fontSize: 13.5 }}>
                   <span onClick={toggleLeaderboard} style={{ position: "relative", width: 40, height: 23, borderRadius: 999, background: profile && profile.on_leaderboard ? "#1B8A4C" : "#D6D6D1", transition: "background 150ms", flexShrink: 0 }}>
                     <span style={{ position: "absolute", top: 2.5, left: profile && profile.on_leaderboard ? 19.5 : 2.5, width: 18, height: 18, borderRadius: "50%", background: "#FFF", transition: "left 150ms" }} />
                   </span>
-                  <span>Show my name on the leaderboard{profile && profile.on_leaderboard === false ? " — you currently appear as \u201cAnonymous explorer\u201d" : ""}</span>
+                  <span>Show my username on the leaderboard{profile && profile.on_leaderboard === false ? " — you currently appear as \u201cAnonymous explorer\u201d" : ""}</span>
                 </label>
                 <div style={{ fontSize: 12, color: "#8A8A90", marginTop: 7 }}>
-                  Everyone's on the leaderboard. With this off, others see you as "Anonymous explorer" — your email and which places you've been are never shown either way.
+                  Your username is how friends find you to compare maps. Everyone's on the leaderboard; with this off you show as "Anonymous explorer". Your email is never shown.
                 </div>
+              </div>
+
+              {/* Refer friends */}
+              <div style={{ background: "#FFF", border: "1.5px solid #E3DFD2", borderRadius: 12, padding: "14px 16px", margin: "0 0 20px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>Refer friends</div>
+                  <div style={{ fontSize: 13, color: "#2747B8", fontWeight: 700 }}>{referralCount} joined · {referralCount * 25} pts</div>
+                </div>
+                <div style={{ fontSize: 12.5, color: "#8A8A90", margin: "4px 0 9px" }}>
+                  Share your link. When someone signs in through it, you earn 25 points.
+                </div>
+                <button className="chip" onClick={() => {
+                  const link = profile && profile.share_id ? `${window.location.origin}${window.location.pathname}?ref=${profile.share_id}` : "";
+                  if (!link) return;
+                  navigator.clipboard.writeText(link).then(
+                    () => { setSaveNote("Referral link copied!"); setTimeout(() => setSaveNote(""), 2000); },
+                    () => prompt("Copy your referral link:", link)
+                  );
+                }}
+                  style={{ width: "100%", padding: "9px", borderRadius: 9, fontSize: 14, fontWeight: 700, border: "none", background: "#2747B8", color: "#FFF" }}>
+                  Copy my referral link
+                </button>
               </div>
 
               {/* Leaderboard */}
@@ -1067,7 +1157,7 @@ export default function App() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {leaderboard.map((r, i) => {
                     const medal = r.rank === 1 ? "#E0A012" : r.rank === 2 ? "#9AA0A6" : r.rank === 3 ? "#B5763A" : null;
-                    const mine = profile && (r.display_name === (profile.display_name || "")) && profile.on_leaderboard;
+                    const mine = profile && profile.username && r.display_name === ("@" + profile.username);
                     return (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: mine ? "#F1F5EE" : "#FFF", border: "1.5px solid " + (mine ? "#1B8A4C" : "#ECECE8") }}>
                         <div style={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 15, color: medal || "#9A978B" }}>{r.rank}</div>
@@ -1086,6 +1176,111 @@ export default function App() {
               <p style={{ fontSize: 12.5, color: "#8A8A90", marginTop: 16 }}>
                 Scoring: 10 points per place visited, 5 for tagging a place (once each), 5 for adding a photo.
               </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ——— COMPARE VIEW ——— */}
+      {view === "compare" && (
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 16px 60px" }}>
+          {!session ? (
+            <div style={{ textAlign: "center", padding: "40px 16px", color: "#55555B" }}>
+              <p style={{ fontSize: 15, marginBottom: 14 }}>Sign in to set a username and compare maps with friends.</p>
+              <button className="chip" onClick={() => { setAuthOpen(true); setAuthSent(false); }}
+                style={{ padding: "9px 18px", borderRadius: 999, fontSize: 14, fontWeight: 700, border: "none", background: "#16161A", color: "#FFF" }}>
+                Sign in
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Your username (compact — full editor also on Rankings) */}
+              <div style={{ background: "#F6F4EC", borderRadius: 10, padding: "11px 14px", margin: "6px 0 16px", fontSize: 13.5, color: "#3C3C42" }}>
+                {profile && profile.username
+                  ? <>You're <strong>@{profile.username}</strong> — share that so friends can compare with you.</>
+                  : <>Set a username below so friends can find you.</>}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 9 }}>
+                  <div style={{ display: "flex", alignItems: "center", flex: "1 1 160px", border: "1.5px solid #D6D6D1", borderRadius: 8, paddingLeft: 10, background: "#FFF" }}>
+                    <span style={{ color: "#9A978B", fontWeight: 700 }}>@</span>
+                    <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value.toLowerCase())} maxLength={20}
+                      placeholder="yourname"
+                      style={{ flex: 1, padding: "8px 8px", fontSize: 14, border: "none", fontFamily: "inherit", outline: "none", background: "transparent" }} />
+                  </div>
+                  <button className="chip" onClick={saveUsername}
+                    style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: "1.5px solid #16161A", background: "#16161A", color: "#FFF" }}>
+                    {profile && profile.username ? "Update" : "Claim"}
+                  </button>
+                </div>
+                {usernameMsg && <div style={{ fontSize: 12.5, marginTop: 8 }}>{usernameMsg}</div>}
+              </div>
+
+              {/* Friend search */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", flex: "1 1 180px", border: "1.5px solid #D6D6D1", borderRadius: 8, paddingLeft: 10 }}>
+                  <span style={{ color: "#9A978B", fontWeight: 700 }}>@</span>
+                  <input value={friendQuery} onChange={(e) => setFriendQuery(e.target.value.toLowerCase())}
+                    onKeyDown={(e) => { if (e.key === "Enter") runCompare(); }}
+                    placeholder="friend's username"
+                    style={{ flex: 1, padding: "9px 8px", fontSize: 14, border: "none", fontFamily: "inherit", outline: "none" }} />
+                </div>
+                <button className="chip" onClick={runCompare}
+                  style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, fontWeight: 700, border: "none", background: "#16161A", color: "#FFF" }}>
+                  Compare
+                </button>
+              </div>
+              {compareError && <p style={{ fontSize: 13.5, color: "#8A4040", margin: "4px 2px 0" }}>{compareError}</p>}
+              {compareLoading && <p style={{ color: "#6B6B70", fontFamily: "'DM Mono', monospace", fontSize: 14, padding: "16px 0" }}>Loading…</p>}
+
+              {compareData && (() => {
+                const mineVisited = new Set(PLACES[tab].filter((p) => states[p.id] === 2).map((p) => p.id));
+                const shapes = tab === "hoods" ? HOOD_CELLS : GREEN_SHAPES;
+                const C_BOTH = "#1B8A4C", C_ME = "#2747B8", C_THEM = "#E08712";
+                let both = 0, meOnly = 0, themOnly = 0, neither = 0;
+                shapes.forEach((p) => {
+                  const m = mineVisited.has(p.id), t = compareData.theirVisited.has(p.id);
+                  if (m && t) both++; else if (m) meOnly++; else if (t) themOnly++; else neither++;
+                });
+                const status = (id) => {
+                  const m = mineVisited.has(id), t = compareData.theirVisited.has(id);
+                  return m && t ? "both" : m ? "me" : t ? "them" : "neither";
+                };
+                const fillFor = (s) => s === "both" ? C_BOTH : s === "me" ? C_ME : s === "them" ? C_THEM : "#6B6960";
+                const opFor = (s) => s === "neither" ? 0.05 : 0.55;
+                return (
+                  <div style={{ marginTop: 14 }}>
+                    <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>You vs {compareData.label}</h2>
+                    <div style={{ fontSize: 13, color: "#8A8A90", marginBottom: 10 }}>
+                      Comparing {tab === "green" ? "green spaces" : "neighbourhoods"} visited
+                    </div>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 12, fontSize: 13.5 }}>
+                      <span><span style={{ display: "inline-block", width: 11, height: 11, borderRadius: 3, background: C_BOTH, marginRight: 6, verticalAlign: -1 }} />Both ({both})</span>
+                      <span><span style={{ display: "inline-block", width: 11, height: 11, borderRadius: 3, background: C_ME, marginRight: 6, verticalAlign: -1 }} />Only you ({meOnly})</span>
+                      <span><span style={{ display: "inline-block", width: 11, height: 11, borderRadius: 3, background: C_THEM, marginRight: 6, verticalAlign: -1 }} />Only them ({themOnly})</span>
+                      <span style={{ color: "#8A8A90" }}>Neither ({neither})</span>
+                    </div>
+                    <svg viewBox={`0 0 ${W.toFixed(0)} ${H.toFixed(0)}`}
+                      style={{ width: "100%", height: "auto", display: "block", borderRadius: 12, border: "1.5px solid #D6D6D1", background: "#F6F4EC" }}
+                      role="img" aria-label={`Comparison map: you versus ${compareData.label}`}>
+                      <g>
+                        {GREEN_SHAPES.map((g) => <path key={"cb" + g.id} d={g.path} fill="#C5DBBA" opacity={0.5} />)}
+                        <path d={THAMES_PATH} fill="none" stroke="#8FB8D4" strokeWidth={13} strokeLinecap="round" strokeLinejoin="round" opacity={0.6} />
+                        {shapes.map((p) => {
+                          const s = status(p.id);
+                          return (
+                            <path key={p.id} d={p.path} fill={fillFor(s)} fillOpacity={opFor(s)}
+                              stroke={s === "neither" ? "#A9A698" : fillFor(s)} strokeOpacity={s === "neither" ? 0.5 : 0.9} strokeWidth={s === "neither" ? 0.6 : 1.4}>
+                              <title>{p.name} — {s === "both" ? "both visited" : s === "me" ? "only you" : s === "them" ? "only " + compareData.label : "neither"}</title>
+                            </path>
+                          );
+                        })}
+                      </g>
+                    </svg>
+                    <p style={{ fontSize: 12.5, color: "#8A8A90", marginTop: 10 }}>
+                      Switch the Neighbourhoods / Green spaces tab at the top to compare the other set.
+                    </p>
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>

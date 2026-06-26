@@ -63,11 +63,23 @@ export async function ensureProfile() {
   if (!session) return null;
   const uid = session.user.id;
   const { data } = await supabase.from("profiles")
-    .select("share_id, display_name, on_leaderboard").eq("user_id", uid).maybeSingle();
+    .select("share_id, display_name, on_leaderboard, username").eq("user_id", uid).maybeSingle();
   if (data && data.share_id) return data;
   const ins = await supabase.from("profiles").insert({ user_id: uid })
-    .select("share_id, display_name, on_leaderboard").single();
+    .select("share_id, display_name, on_leaderboard, username").single();
   return ins.data || null;
+}
+
+export async function setUsername(name) {
+  const { data, error } = await supabase.rpc("set_username", { p_username: name });
+  if (error) throw error;
+  return data; // 'ok' | 'taken' | 'invalid'
+}
+
+export async function fetchUserMap(username) {
+  const { data, error } = await supabase.rpc("get_user_map", { p_username: username });
+  if (error) throw error;
+  return data || [];
 }
 
 export async function updateProfile({ display_name, on_leaderboard }) {
@@ -89,7 +101,19 @@ export async function fetchLeaderboard() {
 export async function fetchMyScore() {
   const { data, error } = await supabase.rpc("my_score");
   if (error) throw error;
-  return (data && data[0]) || { visited_pts: 0, tag_pts: 0, photo_pts: 0, total: 0 };
+  return (data && data[0]) || { visited_pts: 0, tag_pts: 0, photo_pts: 0, referral_pts: 0, total: 0 };
+}
+
+export async function claimReferral(refCode) {
+  const { data, error } = await supabase.rpc("claim_referral", { p_ref_code: refCode });
+  if (error) throw error;
+  return data; // 'ok' | 'already' | 'self' | 'bad_code' | 'no_session'
+}
+
+export async function fetchMyReferrals() {
+  const { data, error } = await supabase.rpc("my_referrals");
+  if (error) throw error;
+  return data || 0;
 }
 
 export async function fetchStats() {
