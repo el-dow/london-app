@@ -612,7 +612,7 @@ export default function App() {
             </div>
           )}
           <div style={{ display: "flex", border: "1.5px solid #16161A", borderRadius: 999, overflow: "hidden" }}>
-            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["stats", "Stats"], ["rank", "Rankings"]] : [])].map(([key, label]) => (
+            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["rank", "Rankings"], ["stats", "Stats"]] : [])].map(([key, label]) => (
               <button key={key} className="chip" onClick={() => setView(key)}
                 style={{ padding: "7px 16px", fontSize: 14, fontWeight: 600, border: "none", background: view === key ? "#16161A" : "#FFF", color: view === key ? "#FFF" : "#16161A", borderRadius: 0 }}>
                 {label}
@@ -1066,7 +1066,7 @@ export default function App() {
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: mine ? "#F1F5EE" : "#FFF", border: "1.5px solid " + (mine ? "#1B8A4C" : "#ECECE8") }}>
                         <div style={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 15, color: medal || "#9A978B" }}>{r.rank}</div>
                         <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.display_name}</div>
-                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{r.hoods} hoods · {r.greens} parks · {r.photos} photos</div>
+                        <div className="lb-breakdown" style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{r.hoods} hoods · {r.greens} parks · {r.photos} photos</div>
                         <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", minWidth: 48, textAlign: "right" }}>{r.score}</div>
                       </div>
                     );

@@ -19,3 +19,7 @@ path:focus { outline: none; }
 @keyframes cardin { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .placecard { animation: cardin 160ms ease; }
 @media (prefers-reduced-motion: reduce) { .chip, .marker { transition: none !important; } .placecard { animation: none; } }
+/* Hide the leaderboard per-row breakdown on narrow screens so name + score stay visible */
+@media (max-width: 560px) {
+  .lb-breakdown { display: none; }
+}
