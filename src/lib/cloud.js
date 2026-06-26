@@ -92,6 +92,21 @@ export async function fetchMyScore() {
   return (data && data[0]) || { visited_pts: 0, tag_pts: 0, photo_pts: 0, total: 0 };
 }
 
+export async function fetchStats() {
+  const [visited, wanted, tags, totals] = await Promise.all([
+    supabase.rpc("top_visited", { p_limit: 15 }),
+    supabase.rpc("top_wanted", { p_limit: 10 }),
+    supabase.rpc("top_tags", { p_limit: 15 }),
+    supabase.rpc("community_totals"),
+  ]);
+  return {
+    topVisited: visited.data || [],
+    topWanted: wanted.data || [],
+    topTags: tags.data || [],
+    totals: (totals.data && totals.data[0]) || { explorers: 0, total_visits: 0, total_photos: 0, total_tags: 0 },
+  };
+}
+
 export async function pullAll() {
   const { data, error } = await supabase.from("progress").select("place_id,state,tags,updated_at");
   if (error) throw error;

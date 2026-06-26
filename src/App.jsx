@@ -9,10 +9,17 @@ import { loadLocal, saveLocal, photoDB, fileToDataUrl } from "./lib/local.js";
 import { RoundelMark } from "./components/RoundelMark.jsx";
 import {
   cloudEnabled, getSession, onAuthChange, signInWithEmail, signInWithGoogle, signOut,
-  ensureProfile, updateProfile, fetchLeaderboard, fetchMyScore,
+  ensureProfile, updateProfile, fetchLeaderboard, fetchMyScore, fetchStats,
   pullAll, pushPlaces, fetchShared, publicPhotoUrl,
   uploadPhoto, removeCloudPhoto,
 } from "./lib/cloud.js";
+
+// Resolve a stats place_id (e.g. "n:soho") to its name + area for display.
+const PLACE_BY_ID = {};
+for (const p of [...PLACES.hoods, ...PLACES.green]) PLACE_BY_ID[p.id] = p;
+const placeLabel = (id) => (PLACE_BY_ID[id] ? PLACE_BY_ID[id].name : id);
+const placeColor = (id) => (PLACE_BY_ID[id] ? (AREA_COLORS[PLACE_BY_ID[id].area] || "#16161A") : "#9A978B");
+
 
 const ONBOARD_KEY = "lof-onboarded";
 
@@ -43,6 +50,8 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState(null);
   const [myScore, setMyScore] = useState(null);
   const [lbLoading, setLbLoading] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("lof-nudge-x") === "1"; } catch (e) { return false; }
@@ -444,6 +453,18 @@ export default function App() {
     if (view === "rank") loadRankings();
   }, [view, session && session.user.id]);
 
+  const loadStats = async () => {
+    if (!cloudEnabled) return;
+    setStatsLoading(true);
+    try { setStats(await fetchStats()); }
+    catch (e) { setStats(null); }
+    setStatsLoading(false);
+  };
+
+  useEffect(() => {
+    if (view === "stats") loadStats();
+  }, [view]);
+
   const saveName = async () => {
     const name = nameDraft.trim().slice(0, 24);
     try {
@@ -591,7 +612,7 @@ export default function App() {
             </div>
           )}
           <div style={{ display: "flex", border: "1.5px solid #16161A", borderRadius: 999, overflow: "hidden" }}>
-            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["rank", "Rankings"]] : [])].map(([key, label]) => (
+            {[["map", "Map"], ["list", "List"], ...(cloudEnabled && !readOnly ? [["stats", "Stats"], ["rank", "Rankings"]] : [])].map(([key, label]) => (
               <button key={key} className="chip" onClick={() => setView(key)}
                 style={{ padding: "7px 16px", fontSize: 14, fontWeight: 600, border: "none", background: view === key ? "#16161A" : "#FFF", color: view === key ? "#FFF" : "#16161A", borderRadius: 0 }}>
                 {label}
@@ -876,6 +897,103 @@ export default function App() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ——— STATS VIEW ——— */}
+      {view === "stats" && (
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 16px 60px" }}>
+          {statsLoading ? (
+            <p style={{ color: "#6B6B70", fontFamily: "'DM Mono', monospace", fontSize: 14, padding: "20px 0" }}>Loading stats…</p>
+          ) : !stats ? (
+            <p style={{ color: "#6B6B70", fontSize: 14, padding: "20px 0" }}>Couldn't load stats right now. <button className="chip" onClick={loadStats} style={{ textDecoration: "underline", border: "none", background: "none", color: "#16161A", cursor: "pointer", padding: 0 }}>Retry</button></p>
+          ) : (
+            <>
+              {/* Community totals */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, margin: "6px 0 18px" }}>
+                {[
+                  ["Explorers", stats.totals.explorers, "#2747B8"],
+                  ["Places visited", stats.totals.total_visits, "#1B8A4C"],
+                  ["Photos added", stats.totals.total_photos, "#A23073"],
+                  ["Tagged", stats.totals.total_tags, "#E08712"],
+                ].map(([label, val, col]) => (
+                  <div key={label} style={{ background: "#F6F4EC", borderRadius: 10, padding: "12px 14px" }}>
+                    <div style={{ fontSize: 12, color: "#6B6B70", fontFamily: "'DM Mono', monospace" }}>{label}</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: col, letterSpacing: "-0.02em" }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 22 }}>
+                {/* Most visited */}
+                <div>
+                  <h2 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 800 }}>Most-visited places</h2>
+                  {stats.topVisited.length ? (() => {
+                    const max = stats.topVisited[0].visitors || 1;
+                    return stats.topVisited.map((r, i) => (
+                      <div key={r.place_id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                        <span style={{ width: 18, textAlign: "right", fontSize: 12, color: "#9A978B", fontFamily: "'DM Mono', monospace" }}>{i + 1}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 3 }}>
+                            <span style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{placeLabel(r.place_id)}</span>
+                            <span style={{ color: "#8A8A90", fontFamily: "'DM Mono', monospace", fontSize: 12, marginLeft: 8 }}>{r.visitors}</span>
+                          </div>
+                          <div style={{ height: 7, borderRadius: 4, background: "#EEEcE4", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.round((r.visitors / max) * 100)}%`, height: "100%", background: placeColor(r.place_id), borderRadius: 4 }} />
+                          </div>
+                        </div>
+                      </div>
+                    ));
+                  })() : <p style={{ fontSize: 13.5, color: "#8A8A90" }}>No visits logged yet.</p>}
+                </div>
+
+                {/* Most wanted */}
+                <div>
+                  <h2 style={{ margin: "0 0 10px", fontSize: 17, fontWeight: 800 }}>Most wished-for</h2>
+                  {stats.topWanted.length ? (() => {
+                    const max = stats.topWanted[0].wants || 1;
+                    return stats.topWanted.map((r, i) => (
+                      <div key={r.place_id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+                        <span style={{ width: 18, textAlign: "right", fontSize: 12, color: "#9A978B", fontFamily: "'DM Mono', monospace" }}>{i + 1}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 3 }}>
+                            <span style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{placeLabel(r.place_id)}</span>
+                            <span style={{ color: "#8A8A90", fontFamily: "'DM Mono', monospace", fontSize: 12, marginLeft: 8 }}>{r.wants}</span>
+                          </div>
+                          <div style={{ height: 7, borderRadius: 4, background: "#EEEcE4", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.round((r.wants / max) * 100)}%`, height: "100%", background: placeColor(r.place_id), opacity: 0.55, borderRadius: 4 }} />
+                          </div>
+                        </div>
+                      </div>
+                    ));
+                  })() : <p style={{ fontSize: 13.5, color: "#8A8A90" }}>Nothing on wishlists yet.</p>}
+                </div>
+              </div>
+
+              {/* Top tags */}
+              <h2 style={{ margin: "24px 0 10px", fontSize: 17, fontWeight: 800 }}>What London feels like</h2>
+              {stats.topTags.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(() => {
+                    const max = stats.topTags[0].uses || 1;
+                    return stats.topTags.map((t) => {
+                      const scale = 0.85 + (t.uses / max) * 0.9;
+                      return (
+                        <span key={t.tag} style={{ padding: "5px 13px", borderRadius: 999, background: "#F6F4EC", border: "1px solid #E3DFD2", fontSize: Math.round(13 * scale), fontWeight: 600, color: "#3C3C42" }}>
+                          {t.tag} <span style={{ color: "#9A978B", fontWeight: 500 }}>{t.uses}</span>
+                        </span>
+                      );
+                    });
+                  })()}
+                </div>
+              ) : <p style={{ fontSize: 13.5, color: "#8A8A90" }}>No impressions tagged yet — be the first.</p>}
+
+              <div style={{ marginTop: 22, display: "flex", justifyContent: "flex-end" }}>
+                <button className="chip" onClick={loadStats} style={{ padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 600, border: "1.5px solid #D6D6D1", background: "#FFF", color: "#3C3C42" }}>Refresh</button>
+              </div>
+              <p style={{ fontSize: 12, color: "#9A978B", marginTop: 10 }}>Stats are across everyone using Patch Map London — counts only, never who.</p>
+            </>
+          )}
         </div>
       )}
 
