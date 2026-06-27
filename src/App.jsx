@@ -495,18 +495,18 @@ export default function App() {
   }, [view]);
 
   const saveUsername = async () => {
-    const name = usernameDraft.trim().toLowerCase();
+    const name = usernameDraft.trim();
     if (!name) return;
     try {
       const res = await setUsername(name);
       if (res === "ok") {
         setProfile((p) => ({ ...(p || {}), username: name }));
-        setUsernameMsg("Username saved: @" + name);
+        setUsernameMsg("Display name saved: " + name);
         loadRankings();
       } else if (res === "taken") {
-        setUsernameMsg("Sorry, @" + name + " is taken — try another.");
+        setUsernameMsg("Sorry, that name is taken — try another.");
       } else {
-        setUsernameMsg("Use 3–20 letters, numbers or underscores.");
+        setUsernameMsg("Use 2–24 letters, numbers or spaces.");
       }
     } catch (e) {
       setUsernameMsg("Couldn't save that — try again.");
@@ -515,10 +515,10 @@ export default function App() {
   };
 
   const runCompare = async () => {
-    const q = friendQuery.trim().toLowerCase();
+    const q = friendQuery.trim();
     if (!q) return;
-    if (profile && profile.username && q === profile.username) {
-      setCompareError("That's you! Search a friend's username.");
+    if (profile && profile.username && q.toLowerCase() === profile.username.toLowerCase()) {
+      setCompareError("That's you! Search a friend's name.");
       return;
     }
     setCompareError("");
@@ -527,13 +527,13 @@ export default function App() {
     try {
       const rows = await fetchUserMap(q);
       if (!rows.length) {
-        setCompareError("No explorer found with username @" + q + " (or they haven't marked anywhere yet).");
+        setCompareError("No explorer found called \u201c" + q + "\u201d (or they haven't marked anywhere yet).");
         setCompareLoading(false);
         return;
       }
       const theirVisited = new Set(rows.filter((r) => r.state === 2).map((r) => r.place_id));
       const theirWanted = new Set(rows.filter((r) => r.state === 1).map((r) => r.place_id));
-      const label = rows[0].display || ("@" + q);
+      const label = rows[0].display || q;
       setCompareData({ username: q, label, theirVisited, theirWanted });
     } catch (e) {
       setCompareError("Couldn't load that map — try again.");
@@ -1097,17 +1097,14 @@ export default function App() {
 
               {/* Username + visibility */}
               <div style={{ background: "#FFF", border: "1.5px solid #E3DFD2", borderRadius: 12, padding: "14px 16px", margin: "8px 0 20px" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 9 }}>Your username</div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 9 }}>Your display name</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", flex: "1 1 160px", border: "1.5px solid #D6D6D1", borderRadius: 8, paddingLeft: 10 }}>
-                    <span style={{ color: "#9A978B", fontWeight: 700 }}>@</span>
-                    <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value.toLowerCase())} maxLength={20}
-                      placeholder="yourname"
-                      style={{ flex: 1, padding: "8px 8px", fontSize: 14, border: "none", fontFamily: "inherit", outline: "none" }} />
-                  </div>
+                  <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value)} maxLength={24}
+                    placeholder="Your name"
+                    style={{ flex: "1 1 160px", padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1.5px solid #D6D6D1", fontFamily: "inherit", outlineColor: "#16161A" }} />
                   <button className="chip" onClick={saveUsername}
                     style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: "1.5px solid #16161A", background: "#FFF", color: "#16161A" }}>
-                    {profile && profile.username ? "Update" : "Claim"}
+                    {profile && profile.username ? "Update" : "Save"}
                   </button>
                 </div>
                 {usernameMsg && <div style={{ fontSize: 12.5, color: "#3C3C42", marginTop: 8 }}>{usernameMsg}</div>}
@@ -1115,10 +1112,10 @@ export default function App() {
                   <span onClick={toggleLeaderboard} style={{ position: "relative", width: 40, height: 23, borderRadius: 999, background: profile && profile.on_leaderboard ? "#1B8A4C" : "#D6D6D1", transition: "background 150ms", flexShrink: 0 }}>
                     <span style={{ position: "absolute", top: 2.5, left: profile && profile.on_leaderboard ? 19.5 : 2.5, width: 18, height: 18, borderRadius: "50%", background: "#FFF", transition: "left 150ms" }} />
                   </span>
-                  <span>Show my username on the leaderboard{profile && profile.on_leaderboard === false ? " — you currently appear as \u201cAnonymous explorer\u201d" : ""}</span>
+                  <span>Show my name on the leaderboard{profile && profile.on_leaderboard === false ? " — you currently appear as \u201cAnonymous explorer\u201d" : ""}</span>
                 </label>
                 <div style={{ fontSize: 12, color: "#8A8A90", marginTop: 7 }}>
-                  Your username is how friends find you to compare maps. Everyone's on the leaderboard; with this off you show as "Anonymous explorer". Your email is never shown.
+                  Your name is also how friends find you to compare maps, so it's unique. Everyone's on the leaderboard; with this off you show as "Anonymous explorer". Your email is never shown.
                 </div>
               </div>
 
@@ -1157,7 +1154,7 @@ export default function App() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {leaderboard.map((r, i) => {
                     const medal = r.rank === 1 ? "#E0A012" : r.rank === 2 ? "#9AA0A6" : r.rank === 3 ? "#B5763A" : null;
-                    const mine = profile && profile.username && r.display_name === ("@" + profile.username);
+                    const mine = profile && profile.username && r.display_name && r.display_name.toLowerCase() === profile.username.toLowerCase();
                     return (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: mine ? "#F1F5EE" : "#FFF", border: "1.5px solid " + (mine ? "#1B8A4C" : "#ECECE8") }}>
                         <div style={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 15, color: medal || "#9A978B" }}>{r.rank}</div>
@@ -1194,21 +1191,18 @@ export default function App() {
             </div>
           ) : (
             <>
-              {/* Your username (compact — full editor also on Rankings) */}
+              {/* Your display name (compact — full editor also on Rankings) */}
               <div style={{ background: "#F6F4EC", borderRadius: 10, padding: "11px 14px", margin: "6px 0 16px", fontSize: 13.5, color: "#3C3C42" }}>
                 {profile && profile.username
-                  ? <>You're <strong>@{profile.username}</strong> — share that so friends can compare with you.</>
-                  : <>Set a username below so friends can find you.</>}
+                  ? <>You're <strong>{profile.username}</strong> — share that name so friends can compare with you.</>
+                  : <>Set a display name below so friends can find you.</>}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 9 }}>
-                  <div style={{ display: "flex", alignItems: "center", flex: "1 1 160px", border: "1.5px solid #D6D6D1", borderRadius: 8, paddingLeft: 10, background: "#FFF" }}>
-                    <span style={{ color: "#9A978B", fontWeight: 700 }}>@</span>
-                    <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value.toLowerCase())} maxLength={20}
-                      placeholder="yourname"
-                      style={{ flex: 1, padding: "8px 8px", fontSize: 14, border: "none", fontFamily: "inherit", outline: "none", background: "transparent" }} />
-                  </div>
+                  <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value)} maxLength={24}
+                    placeholder="Your name"
+                    style={{ flex: "1 1 160px", padding: "8px 12px", borderRadius: 8, fontSize: 14, border: "1.5px solid #D6D6D1", fontFamily: "inherit", outline: "none", background: "#FFF" }} />
                   <button className="chip" onClick={saveUsername}
                     style={{ padding: "8px 14px", borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: "1.5px solid #16161A", background: "#16161A", color: "#FFF" }}>
-                    {profile && profile.username ? "Update" : "Claim"}
+                    {profile && profile.username ? "Update" : "Save"}
                   </button>
                 </div>
                 {usernameMsg && <div style={{ fontSize: 12.5, marginTop: 8 }}>{usernameMsg}</div>}
@@ -1216,13 +1210,10 @@ export default function App() {
 
               {/* Friend search */}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", flex: "1 1 180px", border: "1.5px solid #D6D6D1", borderRadius: 8, paddingLeft: 10 }}>
-                  <span style={{ color: "#9A978B", fontWeight: 700 }}>@</span>
-                  <input value={friendQuery} onChange={(e) => setFriendQuery(e.target.value.toLowerCase())}
-                    onKeyDown={(e) => { if (e.key === "Enter") runCompare(); }}
-                    placeholder="friend's username"
-                    style={{ flex: 1, padding: "9px 8px", fontSize: 14, border: "none", fontFamily: "inherit", outline: "none" }} />
-                </div>
+                <input value={friendQuery} onChange={(e) => setFriendQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") runCompare(); }}
+                  placeholder="Friend's name"
+                  style={{ flex: "1 1 180px", padding: "9px 12px", borderRadius: 8, fontSize: 14, border: "1.5px solid #D6D6D1", fontFamily: "inherit", outline: "none" }} />
                 <button className="chip" onClick={runCompare}
                   style={{ padding: "9px 16px", borderRadius: 8, fontSize: 14, fontWeight: 700, border: "none", background: "#16161A", color: "#FFF" }}>
                   Compare
