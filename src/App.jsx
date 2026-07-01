@@ -6,6 +6,7 @@ import {
   HOOD_CELLS, GREEN_SHAPES, THAMES_PATH, BASE_WATER, ROAD_PATHS, W, H, Postcard,
 } from "./data/core.jsx";
 import { loadLocal, saveLocal, photoDB, fileToDataUrl } from "./lib/local.js";
+import { shareMapImage } from "./lib/shareImage.js";
 import { RoundelMark } from "./components/RoundelMark.jsx";
 import {
   cloudEnabled, getSession, onAuthChange, signInWithEmail, signInWithGoogle, signOut,
@@ -68,6 +69,7 @@ export default function App() {
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState("");
   const [referralCount, setReferralCount] = useState(0);
+  const [sharingImg, setSharingImg] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(() => {
     try { return localStorage.getItem("lof-nudge-x") === "1"; } catch (e) { return false; }
   });
@@ -84,6 +86,8 @@ export default function App() {
   const zoomRef = useRef(null);
   const mapDivRef = useRef(null);
   const leafletRef = useRef(null);
+  const cmpMapDivRef = useRef(null);
+  const cmpLeafletRef = useRef(null);
   const fileRef = useRef(null);
   const metaRef = useRef({});
   const stateRef = useRef({});
@@ -398,6 +402,43 @@ export default function App() {
 
   useEffect(() => { syncLeaflet(); }, [states, selected, tab, useTiles, view]);
 
+  // ——— Compare view: real street map coloured by comparison ———
+  useEffect(() => {
+    if (view !== "compare" || !compareData || !cmpMapDivRef.current) return;
+    const mineVisited = new Set(PLACES[tab].filter((p) => states[p.id] === 2).map((p) => p.id));
+    const list = tab === "hoods" ? HOOD_CELLS : GREEN_SHAPES;
+    const C_BOTH = "#1B8A4C", C_ME = "#2747B8", C_THEM = "#E08712";
+    const statusOf = (id) => {
+      const m = mineVisited.has(id), t = compareData.theirVisited.has(id);
+      return m && t ? "both" : m ? "me" : t ? "them" : "neither";
+    };
+    const colFor = (s) => s === "both" ? C_BOTH : s === "me" ? C_ME : s === "them" ? C_THEM : "#9A978B";
+
+    const map = L.map(cmpMapDivRef.current, { scrollWheelZoom: false }).setView([51.5074, -0.1278], 10);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd", maxZoom: 19,
+    }).addTo(map);
+    const group = L.layerGroup().addTo(map);
+    list.forEach((p) => {
+      if (!p.latlngs) return;
+      const s = statusOf(p.id);
+      const col = colFor(s);
+      const poly = L.polygon(p.latlngs, {
+        color: s === "neither" ? "#B4B1A4" : col,
+        weight: s === "neither" ? 1 : 2,
+        opacity: s === "neither" ? 0.5 : 0.95,
+        fillColor: col,
+        fillOpacity: s === "neither" ? 0.04 : 0.45,
+      });
+      const stTxt = s === "both" ? "both visited" : s === "me" ? "only you" : s === "them" ? "only " + compareData.label : "neither";
+      poly.bindTooltip(p.name + " — " + stTxt, { sticky: true, direction: "top", className: "zonetip" });
+      poly.addTo(group);
+    });
+    cmpLeafletRef.current = { map };
+    return () => { map.remove(); cmpLeafletRef.current = null; };
+  }, [view, compareData, tab]);
+
   // ——— Drawn-map pan/zoom (fallback mode) ———
   useEffect(() => {
     if (view !== "map" || useTiles || !svgRef.current) return;
@@ -448,6 +489,20 @@ export default function App() {
         place_id: id, state: 0, tags: [], updated_at: new Date().toISOString(),
       }));
       pushPlaces(wipe).catch(() => {});
+    }
+  };
+
+  const doShareImage = async () => {
+    if (sharingImg) return;
+    setSharingImg(true);
+    try {
+      const res = await shareMapImage({ kind: tab, states, pct, visited, total });
+      if (res === "downloaded") setSaveNote("Image saved — post it anywhere!");
+      else if (res === "error") setSaveNote("Couldn't make the image, sorry.");
+      else setSaveNote("");
+    } finally {
+      setSharingImg(false);
+      setTimeout(() => setSaveNote(""), 2500);
     }
   };
 
@@ -654,6 +709,13 @@ export default function App() {
             <span>{visited}/{total} visited · {wanted} on the list</span>
             <span style={{ fontWeight: 700, fontSize: 16, color: "#16161A" }}>{pct}%</span>
           </div>
+          {!readOnly && (
+            <button className="chip" onClick={doShareImage} disabled={sharingImg}
+              style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 700, border: "none", background: sharingImg ? "#6B6B70" : "#16161A", color: "#FFF", cursor: sharingImg ? "default" : "pointer" }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+              {sharingImg ? "Creating image…" : "Share my map as an image"}
+            </button>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0", alignItems: "center" }}>
@@ -1159,7 +1221,7 @@ export default function App() {
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: mine ? "#F1F5EE" : "#FFF", border: "1.5px solid " + (mine ? "#1B8A4C" : "#ECECE8") }}>
                         <div style={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 15, color: medal || "#9A978B" }}>{r.rank}</div>
                         <div style={{ flex: 1, minWidth: 0, fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.display_name}</div>
-                        <div className="lb-breakdown" style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{r.hoods} hoods · {r.greens} parks · {r.photos} photos</div>
+                        <div className="lb-breakdown" style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#8A8A90" }}>{Math.round((r.hoods / PLACES.hoods.length) * 100)}% neighbourhoods · {Math.round((r.greens / PLACES.green.length) * 100)}% parks · {r.referrals || 0} referrals</div>
                         <div style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.02em", minWidth: 48, textAlign: "right" }}>{r.score}</div>
                       </div>
                     );
@@ -1231,12 +1293,6 @@ export default function App() {
                   const m = mineVisited.has(p.id), t = compareData.theirVisited.has(p.id);
                   if (m && t) both++; else if (m) meOnly++; else if (t) themOnly++; else neither++;
                 });
-                const status = (id) => {
-                  const m = mineVisited.has(id), t = compareData.theirVisited.has(id);
-                  return m && t ? "both" : m ? "me" : t ? "them" : "neither";
-                };
-                const fillFor = (s) => s === "both" ? C_BOTH : s === "me" ? C_ME : s === "them" ? C_THEM : "#6B6960";
-                const opFor = (s) => s === "neither" ? 0.05 : 0.55;
                 return (
                   <div style={{ marginTop: 14 }}>
                     <h2 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>You vs {compareData.label}</h2>
@@ -1249,23 +1305,7 @@ export default function App() {
                       <span><span style={{ display: "inline-block", width: 11, height: 11, borderRadius: 3, background: C_THEM, marginRight: 6, verticalAlign: -1 }} />Only them ({themOnly})</span>
                       <span style={{ color: "#8A8A90" }}>Neither ({neither})</span>
                     </div>
-                    <svg viewBox={`0 0 ${W.toFixed(0)} ${H.toFixed(0)}`}
-                      style={{ width: "100%", height: "auto", display: "block", borderRadius: 12, border: "1.5px solid #D6D6D1", background: "#F6F4EC" }}
-                      role="img" aria-label={`Comparison map: you versus ${compareData.label}`}>
-                      <g>
-                        {GREEN_SHAPES.map((g) => <path key={"cb" + g.id} d={g.path} fill="#C5DBBA" opacity={0.5} />)}
-                        <path d={THAMES_PATH} fill="none" stroke="#8FB8D4" strokeWidth={13} strokeLinecap="round" strokeLinejoin="round" opacity={0.6} />
-                        {shapes.map((p) => {
-                          const s = status(p.id);
-                          return (
-                            <path key={p.id} d={p.path} fill={fillFor(s)} fillOpacity={opFor(s)}
-                              stroke={s === "neither" ? "#A9A698" : fillFor(s)} strokeOpacity={s === "neither" ? 0.5 : 0.9} strokeWidth={s === "neither" ? 0.6 : 1.4}>
-                              <title>{p.name} — {s === "both" ? "both visited" : s === "me" ? "only you" : s === "them" ? "only " + compareData.label : "neither"}</title>
-                            </path>
-                          );
-                        })}
-                      </g>
-                    </svg>
+                    <div ref={cmpMapDivRef} style={{ width: "100%", height: 460, borderRadius: 12, border: "1.5px solid #D6D6D1", overflow: "hidden", background: "#EEEBE0" }} />
                     <p style={{ fontSize: 12.5, color: "#8A8A90", marginTop: 10 }}>
                       Switch the Neighbourhoods / Green spaces tab at the top to compare the other set.
                     </p>
